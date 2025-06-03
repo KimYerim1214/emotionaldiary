@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>감정 일기장</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      background-color: #fafafa;
+      margin: 0;
+      padding: 2rem;
+    }
+
+    h1 {
+      font-size: 2.2rem;
+      margin-bottom: 0.5rem;
+    }
+
+    p {
+      margin-top: 0;
+      margin-bottom: 1.5rem;
+      color: #555;
+    }
+
+    input[type="date"] {
+      padding: 0.6rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+    }
+
+    .container {
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 30px;
+      justify-items: center;
+      min-height: 450px;
+    }
+
+    .grid-item {
+      width: 140px;
+      height: 140px;
+      position: relative;
+      border-radius: 8px;
+    }
+
+    .grid-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.2s ease;
+    }
+
+    .grid-item img:hover {
+      transform: scale(1.05);
+    }
+
+    .delete-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: rgba(0, 0, 0, 0.5);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      font-size: 16px;
+      cursor: pointer;
+      z-index: 10;
+    }
+
+    .placeholder {
+      width: 140px;
+      height: 140px;
+      background-color: #f5f5f5;
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      font-size: 0.8rem;
+    }
+
+    .nav-buttons {
+      margin-top: 20px;
+    }
+
+    .nav-buttons button {
+      margin: 0 10px;
+      padding: 8px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      background-color: #007bff;
+      color: #fff;
+      border-radius: 4px;
+    }
+
+    .nav-buttons button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #overlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+
+    .overlay-content {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      max-width: 90vw;
+      max-height: 90vh;
+      overflow-y: auto;
+      text-align: center;
+      position: relative;
+    }
+
+    .overlay-content img {
+      max-width: 100%;
+      height: auto;
+      border-radius: 6px;
+      margin-bottom: 12px;
+    }
+
+    #overlay-diary-box {
+      background: #f9f9f9;
+      padding: 12px;
+      border-radius: 6px;
+      text-align: left;
+    }
+
+    #overlay-date {
+      font-weight: bold;
+      margin-bottom: 6px;
+      font-size: 1rem;
+    }
+
+    #overlay-diary-text {
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>감정 일기장</h1>
+    <p>날짜를 선택하세요.</p>
+    <input type="date" id="datePicker" />
+    <div class="gallery" id="gallery"></div>
+    <div class="nav-buttons">
+      <button id="prevBtn">← 이전</button>
+      <button id="nextBtn">다음 →</button>
+    </div>
+  </div>
+
+  <div id="overlay">
+    <div class="overlay-content" onclick="event.stopPropagation()">
+      <img id="overlay-image" alt="확대 이미지" />
+      <div id="overlay-diary-box">
+        <div id="overlay-date"></div>
+        <div id="overlay-diary-text"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", async () => {
+      const datePicker = document.getElementById("datePicker");
+      const gallery = document.getElementById("gallery");
+      const prevBtn = document.getElementById("prevBtn");
+      const nextBtn = document.getElementById("nextBtn");
+      const overlay = document.getElementById("overlay");
+      const overlayImage = document.getElementById("overlay-image");
+      const overlayDate = document.getElementById("overlay-date");
+      const overlayDiaryText = document.getElementById("overlay-diary-text");
+
+      if (!datePicker || !gallery) return;
+
+      let currentPage = 0;
+      let allEntries = [];
+
+      function getUserId() {
+        return localStorage.getItem("userId") || prompt("사용자 ID를 입력하세요");
+      }
+
+      async function loadAllEntries() {
+        const userId = getUserId();
+        localStorage.setItem("userId", userId);
+        try {
+          const res = await fetch(`http://localhost:3001/api/diaries?userId=${userId}`);
+          const data = await res.json();
+          allEntries = data.entries || [];
+        } catch (e) {
+          alert("데이터 로드 실패: " + e.message);
+          allEntries = [];
+        }
+      }
+
+      function renderGallery() {
+        gallery.innerHTML = "";
+        const start = currentPage * 9;
+        const pageItems = allEntries.slice(start, start + 9);
+
+        for (let i = 0; i < 9; i++) {
+          const container = document.createElement("div");
+
+          if (pageItems[i]) {
+            container.className = "grid-item";
+
+            const img = document.createElement("img");
+            img.src = pageItems[i].imageUrl;
+            img.alt = pageItems[i].date;
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "delete-btn";
+            deleteBtn.textContent = "×";
+            deleteBtn.onclick = (e) => {
+              e.stopPropagation();
+              deleteEntry(pageItems[i]);
+            };
+
+            img.onclick = () => {
+              overlayImage.src = pageItems[i].imageUrl;
+              overlayDate.textContent = formatKoreanDate(pageItems[i].date);
+              overlayDiaryText.textContent = pageItems[i].diary;
+              overlay.style.display = "flex";
+            };
+
+            container.appendChild(img);
+            container.appendChild(deleteBtn);
+          } else {
+            container.className = "placeholder";
+            container.textContent = "비어 있음";
+          }
+
+          gallery.appendChild(container);
+        }
+
+        prevBtn.disabled = (currentPage === 0);
+        nextBtn.disabled = (allEntries.length <= 9 || (currentPage + 1) * 9 >= allEntries.length);
+      }
+
+      function deleteEntry(entry) {
+        alert("삭제 기능은 서버 연동을 따로 구현해야 합니다.");
+      }
+
+      function formatKoreanDate(dateStr) {
+        const [yyyy, mm, dd] = dateStr.split("-");
+        return `${yyyy}년 ${mm}월 ${dd}일`;
+      }
+
+      datePicker.addEventListener("change", () => {
+        const selectedDate = datePicker.value;
+        if (selectedDate) {
+          window.location.href = `diary.html?date=${selectedDate}`;
+        }
+      });
+
+      prevBtn.addEventListener("click", () => {
+        if (currentPage > 0) {
+          currentPage--;
+          renderGallery();
+        }
+      });
+
+      nextBtn.addEventListener("click", () => {
+        if ((currentPage + 1) * 9 < allEntries.length) {
+          currentPage++;
+          renderGallery();
+        }
+      });
+
+      overlay.addEventListener("click", () => {
+        overlay.style.display = "none";
+      });
+
+      await loadAllEntries();
+      renderGallery();
+    });
+  </script>
+</body>
+</html>

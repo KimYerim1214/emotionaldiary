@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>감정 일기장</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      margin: 0;
+      background-color: #fafafa;
+      color: #333;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 1.8rem;
+    }
+    #diary-date {
+      margin-bottom: 12px;
+      font-size: 1.1rem;
+      color: #555;
+    }
+    textarea {
+      width: 100%;
+      height: 120px;
+      padding: 8px;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      resize: vertical;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+    button {
+      margin-top: 8px;
+      padding: 10px 20px;
+      font-size: 1rem;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0069d9;
+    }
+    button:disabled {
+      background-color: #aaa;
+      cursor: default;
+    }
+    #generated-image-container {
+      margin-top: 20px;
+    }
+    .preview-img {
+      width: 100%;
+      max-width: 450px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    #action-buttons {
+      margin-top: 12px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
+    #action-buttons button {
+      flex: 1;
+      max-width: 220px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>감정 일기장</h1>
+    <p id="diary-date"></p>
+    <textarea id="diary-input" placeholder="오늘의 감정을 자유롭게 적어보세요..."></textarea><br>
+    <button id="generate-btn">이미지 생성</button>
+
+    <div id="generated-image-container"></div>
+
+    <div id="action-buttons" style="display: none;">
+      <button id="regenerate-btn">다시 만들기</button>
+      <button id="save-btn">생성 완료. 처음 화면으로 돌아가기</button>
+    </div>
+  </div>
+
+  <script>
+    const diaryInput     = document.getElementById("diary-input");
+    const generateBtn    = document.getElementById("generate-btn");
+    const regenerateBtn  = document.getElementById("regenerate-btn");
+    const saveBtn        = document.getElementById("save-btn");
+    const imageContainer = document.getElementById("generated-image-container");
+    const dateText       = document.getElementById("diary-date");
+    const actionButtons  = document.getElementById("action-buttons");
+
+    const diaryDate = new URLSearchParams(location.search).get("date");
+    dateText.textContent = diaryDate ? `${diaryDate} 일기` : "잘못된 접근입니다. 날짜를 선택해주세요.";
+
+    let currentImageUrl = "";
+
+    function getUserId() {
+      return localStorage.getItem("userId") || prompt("사용자 ID를 입력하세요");
+    }
+
+    generateBtn.onclick = async () => {
+      const diary = diaryInput.value.trim();
+      if (!diary) return alert("일기를 입력해주세요.");
+      generateBtn.disabled = true;
+
+      try {
+        const promptRes = await fetch("http://localhost:3001/api/generate-prompt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ diary })
+        });
+        const { prompt } = await promptRes.json();
+
+        const imageRes = await fetch("http://localhost:3001/api/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt })
+        });
+        const { imageUrl } = await imageRes.json();
+
+        currentImageUrl = imageUrl;
+        imageContainer.innerHTML = `<img src="${imageUrl}" class="preview-img" />`;
+        actionButtons.style.display = "flex";
+      } catch (err) {
+        alert("이미지 생성 오류: " + err.message);
+      } finally {
+        generateBtn.disabled = false;
+      }
+    };
+
+    regenerateBtn.onclick = () => {
+      generateBtn.click();
+    };
+
+    saveBtn.onclick = async () => {
+      const diary = diaryInput.value.trim();
+      const userId = getUserId();
+      if (!diary) return alert("일기를 입력해주세요.");
+      if (!currentImageUrl) return alert("먼저 이미지를 생성해주세요.");
+
+      localStorage.setItem("userId", userId);
+
+      try {
+        await fetch("http://localhost:3001/api/save-diary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId,
+            diary,
+            imageUrl: currentImageUrl,
+            date: diaryDate,
+            timestamp: Date.now()
+          })
+        });
+        window.location.href = "index.html";
+      } catch (e) {
+        alert("저장 실패: " + e.message);
+      }
+    };
+  </script>
+</body>
+</html>
